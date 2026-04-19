@@ -15,4 +15,4 @@ torch.load = patched_load
 model = YOLO("model/best.pt")
 
 # Run detection and show result
-model(r"C:\Users\nidhi\OneDrive\Documents\Major_project\files\not_pothole_image.jpg", save=True)
+model(r"C:\Users\nidhi\OneDrive\Documents\Major_project\files\test.jpg", save=True)

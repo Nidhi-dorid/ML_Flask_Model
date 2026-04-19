@@ -3,7 +3,7 @@ import requests
 url = "http://localhost:5000/detect"
 
 files = {
-    "image": open("test.jpg", "rb")
+    "image": open("not_pothole_image.jpg", "rb")
 }
 headers = {
     "X-Internal-Secret": "dev-secret-change-in-prod"
