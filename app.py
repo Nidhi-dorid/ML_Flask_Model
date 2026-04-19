@@ -33,8 +33,8 @@ app = Flask(__name__)
 #   In production behind a reverse proxy this is not needed.
 #   Java's base URL is set in config.JAVA_BACKEND_URL.
 # =============================================================================
-
-@app.route("/", methods=["GET"])
+load_model()
+@app.route("/")
 def home():
     return "Flask ML Service is running"
     
@@ -272,9 +272,6 @@ def internal_error(e):
 # Entry point
 # =============================================================================
 if __name__ == "__main__":
-    from detector import load_model
-    load_model()
-
     app.run(
         host="0.0.0.0",
         port=int(os.environ.get("PORT", 5000)),
