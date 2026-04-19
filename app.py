@@ -28,12 +28,21 @@ import detector
 
 app = Flask(__name__)
 
+# -----------------------------------------------------------------------------
+# Load model safely at startup (works with Gunicorn)
+# -----------------------------------------------------------------------------
+try:
+    detector.load_model()
+    print("[startup] Model loaded successfully")
+except FileNotFoundError as e:
+    print(f"[WARNING] {e}")
+    print("[WARNING] /detect will return 503 until model is available")
+
 # =============================================================================
 # [JAVA-CONNECT] CORS — allow Java backend origin during local development
 #   In production behind a reverse proxy this is not needed.
 #   Java's base URL is set in config.JAVA_BACKEND_URL.
 # =============================================================================
-load_model()
 @app.route("/")
 def home():
     return "Flask ML Service is running"
@@ -83,14 +92,7 @@ def require_internal_secret(f):
 # =============================================================================
 # Startup — load model once
 # =============================================================================
-with app.app_context():
-    try:
-        detector.load_model()
-    except FileNotFoundError as e:
-        # Model not trained yet — Flask still starts so Java health check works.
-        # /detect will return 503 until model is present.
-        print(f"[WARNING] {e}")
-        print("[WARNING] /detect will return 503 until model/best.pt is present.")
+
 
 
 # =============================================================================
@@ -271,9 +273,9 @@ def internal_error(e):
 # =============================================================================
 # Entry point
 # =============================================================================
+# =============================================================================
+# Entry point (only for local running, NOT used by Gunicorn)
+# =============================================================================
 if __name__ == "__main__":
-    app.run(
-        host="0.0.0.0",
-        port=int(os.environ.get("PORT", 5000)),
-        debug=False
-    )
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)
