@@ -14,6 +14,9 @@ import config
 # -----------------------------------------------------------------------------
 # Model singleton — loaded once when Flask starts
 # -----------------------------------------------------------------------------
+import torch
+from ultralytics.nn.tasks import DetectionModel
+torch.serialization.add_safe_globals([DetectionModel])
 _model = None
 
 def load_model():
