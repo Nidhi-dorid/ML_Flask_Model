@@ -17,21 +17,23 @@ import config
 import torch
 from ultralytics.nn.tasks import DetectionModel
 
-
+_model = None
 def load_model():
-    """
-    Load YOLOv8 model from disk.
-    Called once at Flask startup via app.py.
-    Crashes loudly if model file is missing — intentional, fail fast.
-    """
     global _model
+
     if not os.path.exists(config.MODEL_PATH):
         raise FileNotFoundError(
-            f"Model not found at '{config.MODEL_PATH}'.\n"
-            f"Train YOLOv8 and copy best.pt to that path.\n"
-            f"See train/train.py for training script."
+            f"Model not found at '{config.MODEL_PATH}'."
         )
+
+    import torch
+    torch.set_num_threads(1)   # 🔥 reduce CPU usage
+
     _model = YOLO(config.MODEL_PATH)
+
+    # 🔥 Force CPU (CRITICAL for Render)
+    _model.to("cpu")
+
     print(f"[detector] Model loaded from {config.MODEL_PATH}")
     return _model
 
@@ -111,13 +113,20 @@ def detect_pothole(pil_image: Image.Image) -> dict:
     model        = get_model()
     image_w, image_h = pil_image.size
 
+    MAX_SIZE = 1024
+    if max(pil_image.size) > MAX_SIZE:
+        pil_image.thumbnail((MAX_SIZE, MAX_SIZE))
+
     # --- Run inference -------------------------------------------------------
+    try:
     results = model.predict(
-        source    = pil_image,
-        conf      = config.MODEL_CONFIDENCE_THRESHOLD,
-        imgsz     = config.MODEL_IMAGE_SIZE,
-        verbose   = False
+        source=pil_image,
+        conf=config.MODEL_CONFIDENCE_THRESHOLD,
+        imgsz=config.MODEL_IMAGE_SIZE,
+        verbose=False
     )
+    except Exception as e:
+        raise RuntimeError(f"Inference failed: {str(e)}")
 
     # --- Parse detections ----------------------------------------------------
     best_box        = None
