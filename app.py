@@ -272,7 +272,7 @@ def internal_error(e):
 # =============================================================================
 if __name__ == "__main__":
     from detector import load_model
-    load_model()
+   
 
     app.run(
         host="0.0.0.0",

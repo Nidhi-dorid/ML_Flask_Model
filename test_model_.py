@@ -3,7 +3,7 @@ from ultralytics import YOLO
 
 # Fix for PyTorch 2.6+ compatibility
 # Monkey-patch torch.load to use weights_only=False as ultralytics calls it internally
-import torch
+
 original_load = torch.load
 def patched_load(*args, **kwargs):
     if 'weights_only' not in kwargs:
