@@ -40,5 +40,3 @@ Thumbs.db
 
 # Environment variables
 .env
-*.pt
-model/best.pt
