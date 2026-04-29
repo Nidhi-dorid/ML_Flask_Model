@@ -14,7 +14,9 @@ import config
 # -----------------------------------------------------------------------------
 # Model singleton — loaded once when Flask starts
 # -----------------------------------------------------------------------------
-_model = None
+import torch
+from ultralytics.nn.tasks import DetectionModel
+
 
 def load_model():
     """
