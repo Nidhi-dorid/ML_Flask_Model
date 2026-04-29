@@ -125,6 +125,96 @@ def require_internal_secret(f):
 #
 # Java maps JSON → Java using Jackson @JsonProperty annotations.
 # =============================================================================
+@app.route("/api/detect-pothole", methods=["POST"])
+def detect_pothole_api():
+
+    # 1. Validate image
+    if "image" not in request.files:
+        return jsonify({
+            "success": False,
+            "message": "No image provided",
+            "data": None
+        }), 400
+
+    file = request.files["image"]
+
+    # 2. Read image
+    try:
+        image_bytes = file.read()
+        pil_image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": "Invalid image",
+            "data": str(e)
+        }), 422
+
+    # 3. Ensure model loaded
+    try:
+        ensure_model_loaded()
+    except Exception:
+        return jsonify({
+            "success": False,
+            "message": "Model not available",
+            "data": None
+        }), 503
+
+    # 4. Run detection (reuse your detector logic)
+    try:
+        model = detector.get_model()
+
+        results = model.predict(
+            source=pil_image,
+            conf=config.MODEL_CONFIDENCE_THRESHOLD,
+            imgsz=config.MODEL_IMAGE_SIZE,
+            verbose=False
+        )
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": "Detection failed",
+            "data": str(e)
+        }), 500
+
+    # 5. Parse detections
+    detections = []
+
+    for result in results:
+        for box in result.boxes:
+            conf = float(box.conf[0])
+            x1, y1, x2, y2 = box.xyxy[0].tolist()
+
+            detections.append({
+                "id": len(detections) + 1,
+                "bbox": [int(x1), int(y1), int(x2), int(y2)],
+                "confidence": round(conf, 4)
+            })
+
+    pothole_count = len(detections)
+
+    # 6. No pothole case
+    if pothole_count == 0:
+        return jsonify({
+            "success": False,
+            "message": "No pothole detected in the image",
+            "data": {
+                "hasPothole": False,
+                "potholeCount": 0,
+                "confidence": 0.0
+            }
+        }), 200   # better than 400
+
+    # 7. Success
+    return jsonify({
+        "success": True,
+        "message": f"Pothole detected! Found {pothole_count} pothole(s).",
+        "data": {
+            "hasPothole": True,
+            "potholeCount": pothole_count,
+            "confidence": max(d["confidence"] for d in detections),
+            "detections": detections
+        }
+    }), 200
 @app.route("/detect", methods=["POST"])
 @require_internal_secret
 def detect():
