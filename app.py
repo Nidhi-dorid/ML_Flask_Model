@@ -283,6 +283,7 @@ def detect():
 
 def health():
     try:
+        print("BASE_DIR:", config.BASE_DIR)
         print("MODEL PATH:", config.MODEL_PATH)
         print("FILE EXISTS:", os.path.exists(config.MODEL_PATH))
         
