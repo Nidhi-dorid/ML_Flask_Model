@@ -279,22 +279,29 @@ def detect():
 #   Java should refuse to accept pothole reports when model_loaded = false.
 # =============================================================================
 @app.route("/health", methods=["GET"])
+
+
 def health():
     try:
-        ensure_model_loaded()
-        model_loaded = True
-    except RuntimeError:
-        model_loaded = False
+        print("MODEL PATH:", config.MODEL_PATH)
+        print("FILE EXISTS:", os.path.exists(config.MODEL_PATH))
+        
+        try:
+            detector.get_model()
+            model_loaded = True
+        except Exception:
+            model_loaded = False
 
-    status_code = 200 if model_loaded else 503
+        return jsonify({
+            "status": "ok" if model_loaded else "model_not_loaded",
+            "model_loaded": model_loaded
+        }), 200
 
-    return jsonify({
-        "status": "ok" if model_loaded else "model_not_loaded",
-        "model_loaded": model_loaded_status,
-        "model_path":   config.MODEL_PATH,
-        # [JAVA-CONNECT] Java reads "model_loaded" to gate report submissions
-    }), status_code
-
+    except Exception as e:
+        return jsonify({
+            "error": "Health check failed",
+            "detail": str(e)
+        }), 500
 
 # =============================================================================
 # GET /model/info
