@@ -35,12 +35,20 @@ app = Flask(__name__)
 # -----------------------------------------------------------------------------
 # Load model safely at startup (works with Gunicorn)
 # -----------------------------------------------------------------------------
-try:
-    detector.load_model()
-    print("[startup] Model loaded successfully")
-except FileNotFoundError as e:
-    print(f"[WARNING] {e}")
-    print("[WARNING] /detect will return 503 until model is available")
+
+model_loaded = False
+
+def ensure_model_loaded():
+    global model_loaded
+    if not model_loaded:
+        try:
+            detector.load_model()
+            model_loaded = True
+            print("[startup] Model loaded successfully")
+        except Exception as e:
+            print("[FATAL] Model loading failed:")
+            traceback.print_exc()
+            raise RuntimeError("Model loading failed")
 
 # =============================================================================
 # [JAVA-CONNECT] CORS — allow Java backend origin during local development
@@ -136,8 +144,10 @@ def detect():
         return jsonify({"error": "Empty filename"}), 400
 
     # --- Validate model loaded -----------------------------------------------
+    # --- Ensure model is loaded ----------------------------------------------
+
     try:
-        detector.get_model()
+        ensure_model_loaded()
     except RuntimeError:
         return jsonify({
             "error": "ML model not loaded",
@@ -185,7 +195,7 @@ def detect():
 @app.route("/health", methods=["GET"])
 def health():
     try:
-        detector.get_model()
+        ensure_model_loaded()
         model_loaded = True
     except RuntimeError:
         model_loaded = False
@@ -193,8 +203,8 @@ def health():
     status_code = 200 if model_loaded else 503
 
     return jsonify({
-        "status":       "ok" if model_loaded else "model_not_loaded",
-        "model_loaded": model_loaded,
+        "status": "ok" if model_loaded else "model_not_loaded",
+        "model_loaded": model_loaded_status,
         "model_path":   config.MODEL_PATH,
         # [JAVA-CONNECT] Java reads "model_loaded" to gate report submissions
     }), status_code
