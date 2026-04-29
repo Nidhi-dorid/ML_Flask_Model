@@ -1,9 +1,6 @@
 # =============================================================================
 # detector.py — YOLOv8 inference engine + severity scoring
 # =============================================================================
-# Loaded once at startup. Flask calls detect_pothole() per request.
-# No Java integration points here — this is pure ML logic.
-# =============================================================================
 
 import os
 import numpy as np
@@ -11,13 +8,11 @@ from PIL import Image
 from ultralytics import YOLO
 import config
 
-# -----------------------------------------------------------------------------
-# Model singleton — loaded once when Flask starts
-# -----------------------------------------------------------------------------
 import torch
 from ultralytics.nn.tasks import DetectionModel
 
 _model = None
+
 def load_model():
     global _model
 
@@ -26,20 +21,16 @@ def load_model():
             f"Model not found at '{config.MODEL_PATH}'."
         )
 
-    import torch
-    torch.set_num_threads(1)   # 🔥 reduce CPU usage
+    torch.set_num_threads(1)   # reduce CPU usage
 
     _model = YOLO(config.MODEL_PATH)
-
-    # 🔥 Force CPU (CRITICAL for Render)
-    _model.to("cpu")
+    _model.to("cpu")  # force CPU
 
     print(f"[detector] Model loaded from {config.MODEL_PATH}")
     return _model
 
 
 def get_model():
-    """Return the loaded model, raising if not initialized yet."""
     if _model is None:
         raise RuntimeError("Model not loaded. Call load_model() first.")
     return _model
@@ -51,24 +42,13 @@ def get_model():
 
 def compute_severity(bbox_width: int, bbox_height: int,
                      image_width: int, image_height: int) -> tuple[str, float]:
-    """
-    Derive severity label and 0–1 score from bounding box size.
 
-    Logic:
-        severity_score = bbox_area / image_area   (clamped to 1.0)
-        score < SEVERITY_LOW_MAX    → "low"
-        score < SEVERITY_MEDIUM_MAX → "medium"
-        score ≥ SEVERITY_MEDIUM_MAX → "high"
-
-    Returns:
-        (severity_label: str, severity_score: float)
-    """
     image_area = image_width * image_height
     if image_area == 0:
         return "low", 0.0
 
-    bbox_area    = bbox_width * bbox_height
-    raw_score    = bbox_area / image_area
+    bbox_area = bbox_width * bbox_height
+    raw_score = bbox_area / image_area
     severity_score = min(round(float(raw_score), 4), 1.0)
 
     if severity_score < config.SEVERITY_LOW_MAX:
@@ -86,50 +66,30 @@ def compute_severity(bbox_width: int, bbox_height: int,
 # -----------------------------------------------------------------------------
 
 def detect_pothole(pil_image: Image.Image) -> dict:
-    """
-    Run YOLOv8 inference on a PIL image.
 
-    Args:
-        pil_image: PIL.Image.Image in RGB mode
+    model = get_model()
 
-    Returns dict with EXACT keys Java expects (see config.RESPONSE_KEYS):
-        {
-            "pothole_detected": bool,
-            "severity":         str   ("low" | "medium" | "high"),
-            "confidence":       float (0.0–1.0),
-            "severity_score":   float (0.0–1.0),
-            "bbox_width":       int,
-            "bbox_height":      int
-        }
-
-    If no pothole detected:
-        pothole_detected = False
-        severity         = "none"
-        confidence       = 0.0
-        severity_score   = 0.0
-        bbox_width       = 0
-        bbox_height      = 0
-    """
-    model        = get_model()
-    image_w, image_h = pil_image.size
-
+    # 🔽 Resize first (important)
     MAX_SIZE = 1024
     if max(pil_image.size) > MAX_SIZE:
         pil_image.thumbnail((MAX_SIZE, MAX_SIZE))
 
+    # 🔽 Get correct size AFTER resize
+    image_w, image_h = pil_image.size
+
     # --- Run inference -------------------------------------------------------
     try:
-    results = model.predict(
-        source=pil_image,
-        conf=config.MODEL_CONFIDENCE_THRESHOLD,
-        imgsz=config.MODEL_IMAGE_SIZE,
-        verbose=False
-    )
+        results = model.predict(
+            source=pil_image,
+            conf=config.MODEL_CONFIDENCE_THRESHOLD,
+            imgsz=config.MODEL_IMAGE_SIZE,
+            verbose=False
+        )
     except Exception as e:
         raise RuntimeError(f"Inference failed: {str(e)}")
 
     # --- Parse detections ----------------------------------------------------
-    best_box        = None
+    best_box = None
     best_confidence = 0.0
 
     for result in results:
@@ -137,17 +97,17 @@ def detect_pothole(pil_image: Image.Image) -> dict:
             conf = float(box.conf[0])
             if conf > best_confidence:
                 best_confidence = conf
-                best_box        = box
+                best_box = box
 
     # --- No detection --------------------------------------------------------
     if best_box is None:
         return {
             config.RESPONSE_KEYS["pothole_detected"]: False,
-            config.RESPONSE_KEYS["severity"]:         "none",
-            config.RESPONSE_KEYS["confidence"]:       0.0,
-            config.RESPONSE_KEYS["severity_score"]:   0.0,
-            config.RESPONSE_KEYS["bbox_width"]:       0,
-            config.RESPONSE_KEYS["bbox_height"]:      0,
+            config.RESPONSE_KEYS["severity"]: "none",
+            config.RESPONSE_KEYS["confidence"]: 0.0,
+            config.RESPONSE_KEYS["severity_score"]: 0.0,
+            config.RESPONSE_KEYS["bbox_width"]: 0,
+            config.RESPONSE_KEYS["bbox_height"]: 0,
         }
 
     # --- Extract bbox --------------------------------------------------------
@@ -162,9 +122,9 @@ def detect_pothole(pil_image: Image.Image) -> dict:
 
     return {
         config.RESPONSE_KEYS["pothole_detected"]: True,
-        config.RESPONSE_KEYS["severity"]:         severity_label,
-        config.RESPONSE_KEYS["confidence"]:       round(best_confidence, 4),
-        config.RESPONSE_KEYS["severity_score"]:   severity_score,
-        config.RESPONSE_KEYS["bbox_width"]:        bbox_w,
-        config.RESPONSE_KEYS["bbox_height"]:       bbox_h,
+        config.RESPONSE_KEYS["severity"]: severity_label,
+        config.RESPONSE_KEYS["confidence"]: round(best_confidence, 4),
+        config.RESPONSE_KEYS["severity_score"]: severity_score,
+        config.RESPONSE_KEYS["bbox_width"]: bbox_w,
+        config.RESPONSE_KEYS["bbox_height"]: bbox_h,
     }
