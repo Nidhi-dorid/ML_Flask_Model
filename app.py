@@ -22,6 +22,10 @@ from PIL import Image
 import io
 import traceback
 import os
+import matplotlib
+matplotlib.use('Agg')   # 👈 MUST come before pyplot
+
+import matplotlib.pyplot as plt
 
 import config
 import detector
