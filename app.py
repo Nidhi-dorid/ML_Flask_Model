@@ -25,8 +25,10 @@ import os
 
 import config
 import detector
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app)   # allow all origins (dev)
 
 # -----------------------------------------------------------------------------
 # Load model safely at startup (works with Gunicorn)
