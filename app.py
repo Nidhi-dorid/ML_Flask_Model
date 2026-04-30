@@ -279,23 +279,34 @@ def detect():
 #   Java should refuse to accept pothole reports when model_loaded = false.
 # =============================================================================
 @app.route("/health", methods=["GET"])
-
-
 def health():
     try:
-        print("BASE_DIR:", config.BASE_DIR)
-        print("MODEL PATH:", config.MODEL_PATH)
-        print("FILE EXISTS:", os.path.exists(config.MODEL_PATH))
-        
+        model_path = config.MODEL_PATH
+        model_dir = os.path.dirname(model_path)
+
+        file_exists = os.path.exists(model_path)
+        dir_exists = os.path.exists(model_dir)
+
         try:
             detector.get_model()
             model_loaded = True
-        except Exception:
+        except Exception as e:
             model_loaded = False
+            model_error = str(e)
 
         return jsonify({
             "status": "ok" if model_loaded else "model_not_loaded",
-            "model_loaded": model_loaded
+            "model_loaded": model_loaded,
+
+            # 🔍 DEBUG INFO (very important)
+            "model_path": model_path,
+            "model_file_exists": file_exists,
+            "model_dir_exists": dir_exists,
+            "files_in_model_dir": os.listdir(model_dir) if dir_exists else "dir_not_found",
+            
+            # optional error insight
+            "model_error": model_error if not model_loaded else None
+
         }), 200
 
     except Exception as e:
