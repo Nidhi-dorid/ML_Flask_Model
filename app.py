@@ -32,20 +32,14 @@ app = Flask(__name__)
 # Load model safely at startup (works with Gunicorn)
 # -----------------------------------------------------------------------------
 
-model_loaded = False
+_model_loaded = False
 
 def ensure_model_loaded():
-    global model_loaded
-    if not model_loaded:
-        try:
-            detector.load_model()
-            model_loaded = True
-            print("[startup] Model loaded successfully")
-        except Exception as e:
-            print("[FATAL] Model loading failed:")
-            traceback.print_exc()
-            raise RuntimeError("Model loading failed")
+    global _model_loaded
 
+    if not _model_loaded:
+        detector.load_model()
+        _model_loaded = True
 # =============================================================================
 # [JAVA-CONNECT] CORS — allow Java backend origin during local development
 #   In production behind a reverse proxy this is not needed.
@@ -287,25 +281,25 @@ def health():
         file_exists = os.path.exists(model_path)
         dir_exists = os.path.exists(model_dir)
 
+        model_loaded = False
+        model_error = None
+
         try:
-            detector.get_model()
+            ensure_model_loaded()   # 🔥 THIS WAS MISSING
             model_loaded = True
         except Exception as e:
-            model_loaded = False
             model_error = str(e)
 
         return jsonify({
             "status": "ok" if model_loaded else "model_not_loaded",
             "model_loaded": model_loaded,
 
-            # 🔍 DEBUG INFO (very important)
             "model_path": model_path,
             "model_file_exists": file_exists,
             "model_dir_exists": dir_exists,
             "files_in_model_dir": os.listdir(model_dir) if dir_exists else "dir_not_found",
-            
-            # optional error insight
-            "model_error": model_error if not model_loaded else None
+
+            "model_error": model_error
 
         }), 200
 
@@ -314,7 +308,6 @@ def health():
             "error": "Health check failed",
             "detail": str(e)
         }), 500
-
 # =============================================================================
 # GET /model/info
 # =============================================================================
