@@ -7,3 +7,4 @@ numpy==1.26.4
 Pillow==10.3.0
 pyyaml==6.0.1
 opencv-python-headless==4.9.0.80
+flask-cors
