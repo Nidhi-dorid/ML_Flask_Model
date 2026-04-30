@@ -40,6 +40,8 @@ Thumbs.db
 
 # Environment variables
 .env
+*.pt 
+model/
 
 
 
