@@ -40,15 +40,19 @@ def get_model():
 # Severity scoring
 # -----------------------------------------------------------------------------
 
-def compute_severity(bbox_width: int, bbox_height: int,
+def compute_severity(total_bbox_area: float,
                      image_width: int, image_height: int) -> tuple[str, float]:
-
+    """
+    Compute severity based on the SUMMED area of ALL detected pothole bounding
+    boxes divided by the total image area.  Using the single largest box caused
+    almost every image to land in "Medium" because one pothole rarely covers
+    more than 8 % of the frame.
+    """
     image_area = image_width * image_height
     if image_area == 0:
         return "low", 0.0
 
-    bbox_area = bbox_width * bbox_height
-    raw_score = bbox_area / image_area
+    raw_score = total_bbox_area / image_area
     severity_score = min(round(float(raw_score), 4), 1.0)
 
     if severity_score < config.SEVERITY_LOW_MAX:
@@ -88,13 +92,19 @@ def detect_pothole(pil_image: Image.Image) -> dict:
     except Exception as e:
         raise RuntimeError(f"Inference failed: {str(e)}")
 
-    # --- Parse detections ----------------------------------------------------
-    best_box = None
+    # --- Parse detections — accumulate ALL boxes -----------------------------
+    best_box        = None
     best_confidence = 0.0
+    total_bbox_area = 0.0
 
     for result in results:
         for box in result.boxes:
             conf = float(box.conf[0])
+            x1, y1, x2, y2 = box.xyxy[0].tolist()
+
+            # Sum area across every detected pothole
+            total_bbox_area += (x2 - x1) * (y2 - y1)
+
             if conf > best_confidence:
                 best_confidence = conf
                 best_box = box
@@ -110,14 +120,14 @@ def detect_pothole(pil_image: Image.Image) -> dict:
             config.RESPONSE_KEYS["bbox_height"]: 0,
         }
 
-    # --- Extract bbox --------------------------------------------------------
+    # --- Extract best bbox (kept for Java backward-compat) -------------------
     x1, y1, x2, y2 = best_box.xyxy[0].tolist()
     bbox_w = int(round(x2 - x1))
     bbox_h = int(round(y2 - y1))
 
-    # --- Severity ------------------------------------------------------------
+    # --- Severity (now uses summed area) -------------------------------------
     severity_label, severity_score = compute_severity(
-        bbox_w, bbox_h, image_w, image_h
+        total_bbox_area, image_w, image_h
     )
 
     return {
