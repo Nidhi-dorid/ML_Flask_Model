@@ -100,26 +100,14 @@ def require_internal_secret(f):
 
 
 # =============================================================================
-# POST /detect
+# POST /api/detect-pothole
 # =============================================================================
-# [JAVA-CONNECT] PRIMARY ENDPOINT
+# Frontend-facing endpoint.  Returns severity + severityScore so the UI can
+# display accurate risk information, consistent with the /detect endpoint used
+# by the Java backend.
 #
-# Java sends:
-#   POST http://localhost:5000/detect
-#   multipart/form-data
-#   Field name: "image"   (must match config.IMAGE_FIELD_NAME)
-#   Header:     X-Internal-Secret: <secret>
-#
-# Java reads response:
-#   MLDetectionResult.java — fields must match JSON keys exactly:
-#       pothole_detected  → boolean potholeDetected
-#       severity          → String  severity
-#       confidence        → double  confidence
-#       severity_score    → double  severityScore
-#       bbox_width        → int     bboxWidth
-#       bbox_height       → int     bboxHeight
-#
-# Java maps JSON → Java using Jackson @JsonProperty annotations.
+# Severity is calculated by summing the bounding-box area of EVERY detected
+# pothole and dividing by the total image area (see detector.compute_severity).
 # =============================================================================
 @app.route("/api/detect-pothole", methods=["POST"])
 def detect_pothole_api():
@@ -155,7 +143,7 @@ def detect_pothole_api():
             "data": None
         }), 503
 
-    # 4. Run detection (reuse your detector logic)
+    # 4. Run detection
     try:
         model = detector.get_model()
 
@@ -172,13 +160,18 @@ def detect_pothole_api():
             "data": str(e)
         }), 500
 
-    # 5. Parse detections
-    detections = []
+    # 5. Parse detections — accumulate ALL bounding boxes
+    detections      = []
+    total_bbox_area = 0.0
+    image_w, image_h = pil_image.size
 
     for result in results:
         for box in result.boxes:
             conf = float(box.conf[0])
             x1, y1, x2, y2 = box.xyxy[0].tolist()
+
+            # Accumulate area across every detected pothole
+            total_bbox_area += (x2 - x1) * (y2 - y1)
 
             detections.append({
                 "id": len(detections) + 1,
@@ -196,11 +189,18 @@ def detect_pothole_api():
             "data": {
                 "hasPothole": False,
                 "potholeCount": 0,
-                "confidence": 0.0
+                "confidence": 0.0,
+                "severity": "none",
+                "severityScore": 0.0
             }
-        }), 200   # better than 400
+        }), 200
 
-    # 7. Success
+    # 7. Compute severity from summed bbox area
+    severity_label, severity_score = detector.compute_severity(
+        total_bbox_area, image_w, image_h
+    )
+
+    # 8. Success
     return jsonify({
         "success": True,
         "message": f"Pothole detected! Found {pothole_count} pothole(s).",
@@ -208,9 +208,35 @@ def detect_pothole_api():
             "hasPothole": True,
             "potholeCount": pothole_count,
             "confidence": max(d["confidence"] for d in detections),
+            "severity": severity_label,
+            "severityScore": severity_score,
             "detections": detections
         }
     }), 200
+
+
+# =============================================================================
+# POST /detect
+# =============================================================================
+# [JAVA-CONNECT] PRIMARY ENDPOINT
+#
+# Java sends:
+#   POST http://localhost:5000/detect
+#   multipart/form-data
+#   Field name: "image"   (must match config.IMAGE_FIELD_NAME)
+#   Header:     X-Internal-Secret: <secret>
+#
+# Java reads response:
+#   MLDetectionResult.java — fields must match JSON keys exactly:
+#       pothole_detected  → boolean potholeDetected
+#       severity          → String  severity
+#       confidence        → double  confidence
+#       severity_score    → double  severityScore
+#       bbox_width        → int     bboxWidth
+#       bbox_height       → int     bboxHeight
+#
+# Java maps JSON → Java using Jackson @JsonProperty annotations.
+# =============================================================================
 @app.route("/detect", methods=["POST"])
 @require_internal_secret
 def detect():
@@ -287,7 +313,7 @@ def health():
         model_error = None
 
         try:
-            ensure_model_loaded()   # 🔥 THIS WAS MISSING
+            ensure_model_loaded()
             model_loaded = True
         except Exception as e:
             model_error = str(e)
@@ -310,6 +336,8 @@ def health():
             "error": "Health check failed",
             "detail": str(e)
         }), 500
+
+
 # =============================================================================
 # GET /model/info
 # =============================================================================
@@ -390,4 +418,3 @@ def internal_error(e):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
-
